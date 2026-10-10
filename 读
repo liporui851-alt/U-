@@ -2,43 +2,39 @@ local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/rel
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
--- 用当前玩家头像作为 User Icon
 local avatarIcon = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=150&h=150"
 
 local Window = WindUI:CreateWindow({
-    Title = "duck私人定制",
-    Author = "you",
+    Title = "Duck私人定制",
+    Author = "duck",
     Folder = "TeleportBehind",
-    Size = UDim2.fromOffset(500, 400),
+    Size = UDim2.fromOffset(500, 450),
     Transparent = true,
     Theme = "Dark",
-    User = {
-        Enabled = true,
-        Anonymous = false,          -- 必须为 false 才显示头像
-        Icon = avatarIcon,          -- 当前玩家头像
-    },
+    User = { Enabled = true, Anonymous = false, Icon = avatarIcon },
 })
 
-local Tab = Window:Tab({ Title = "传送", Icon = "move" })
+local Tab = Window:Tab({ Title = "功能", Icon = "crosshair" })
 
+-- ==================== 瞬移部分 ====================
 local targetPlayer = nil
-local connection = nil
+local tpConnection = nil
 local selectedName = nil
 
 local function getPlayerNames()
     local names = {}
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then
-            table.insert(names, p.Name)
-        end
+        if p ~= LocalPlayer then table.insert(names, p.Name) end
     end
     return names
 end
 
 Tab:Dropdown({
-    Title = "选择目标玩家",
+    Title = "选择瞬移目标",
     Values = getPlayerNames(),
     Callback = function(option)
         selectedName = option
@@ -47,23 +43,18 @@ Tab:Dropdown({
 })
 
 local function stopTeleport()
-    if connection then
-        connection:Disconnect()
-        connection = nil
-    end
+    if tpConnection then tpConnection:Disconnect(); tpConnection = nil end
 end
 
 local function startTeleport()
     stopTeleport()
-    connection = RunService.Heartbeat:Connect(function()
+    tpConnection = RunService.Heartbeat:Connect(function()
         if not targetPlayer or not targetPlayer.Character then return end
         local myChar = LocalPlayer.Character
         if not myChar then return end
-
         local myHRP = myChar:FindFirstChild("HumanoidRootPart")
         local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not myHRP or not targetHRP then return end
-
         local behindPos = targetHRP.Position - (targetHRP.CFrame.LookVector * 5)
         myHRP.CFrame = CFrame.new(behindPos, targetHRP.Position)
     end)
@@ -75,12 +66,12 @@ Tab:Toggle({
     Callback = function(state)
         if state then
             if not selectedName then
-                WindUI:Notify({ Title = "错误", Content = "请先选择目标玩家", Duration = 3 })
+                WindUI:Notify({ Title = "错误", Content = "请先选择目标", Duration = 3 })
                 return
             end
             targetPlayer = Players:FindFirstChild(selectedName)
             if not targetPlayer then
-                WindUI:Notify({ Title = "错误", Content = "目标玩家已离开", Duration = 3 })
+                WindUI:Notify({ Title = "错误", Content = "目标已离开", Duration = 3 })
                 return
             end
             startTeleport()
@@ -89,3 +80,55 @@ Tab:Toggle({
         end
     end,
 })
+
+-- ==================== 自瞄部分 ====================
+local aimEnabled = false
+local aimConnection = nil
+
+Tab:Toggle({
+    Title = "自瞄（锁定附近玩家头部）",
+    Default = false,
+    Callback = function(state)
+        aimEnabled = state
+        if not state and aimConnection then
+            aimConnection:Disconnect()
+            aimConnection = nil
+        end
+    end,
+})
+
+-- 找鼠标附近最近的玩家头部
+local function getClosestTarget()
+    local closest = nil
+    local shortest = math.huge
+    local mousePos = UserInputService:GetMouseLocation()
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local head = p.Character:FindFirstChild("Head")
+            local humanoid = p.Character:FindFirstChildOfClass("Humanoid")
+            if head and humanoid and humanoid.Health > 0 then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+                if onScreen then
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    if dist < shortest then
+                        shortest = dist
+                        closest = head
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+-- 主循环：自瞄平滑跟随
+RunService.RenderStepped:Connect(function()
+    if not aimEnabled then return end
+    local targetHead = getClosestTarget()
+    if not targetHead then return end
+
+    local camPos = Camera.CFrame.Position
+    local lookAt = CFrame.new(camPos, targetHead.Position)
+    Camera.CFrame = Camera.CFrame:Lerp(lookAt, 0.15)
+end)
