@@ -1,0 +1,91 @@
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+-- 用当前玩家头像作为 User Icon
+local avatarIcon = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=150&h=150"
+
+local Window = WindUI:CreateWindow({
+    Title = "瞬移到身后",
+    Author = "you",
+    Folder = "TeleportBehind",
+    Size = UDim2.fromOffset(500, 400),
+    Transparent = true,
+    Theme = "Dark",
+    User = {
+        Enabled = true,
+        Anonymous = false,          -- 必须为 false 才显示头像
+        Icon = avatarIcon,          -- 当前玩家头像
+    },
+})
+
+local Tab = Window:Tab({ Title = "传送", Icon = "move" })
+
+local targetPlayer = nil
+local connection = nil
+local selectedName = nil
+
+local function getPlayerNames()
+    local names = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            table.insert(names, p.Name)
+        end
+    end
+    return names
+end
+
+Tab:Dropdown({
+    Title = "选择目标玩家",
+    Values = getPlayerNames(),
+    Callback = function(option)
+        selectedName = option
+        targetPlayer = Players:FindFirstChild(option)
+    end,
+})
+
+local function stopTeleport()
+    if connection then
+        connection:Disconnect()
+        connection = nil
+    end
+end
+
+local function startTeleport()
+    stopTeleport()
+    connection = RunService.Heartbeat:Connect(function()
+        if not targetPlayer or not targetPlayer.Character then return end
+        local myChar = LocalPlayer.Character
+        if not myChar then return end
+
+        local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+        local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not myHRP or not targetHRP then return end
+
+        local behindPos = targetHRP.Position - (targetHRP.CFrame.LookVector * 5)
+        myHRP.CFrame = CFrame.new(behindPos, targetHRP.Position)
+    end)
+end
+
+Tab:Toggle({
+    Title = "持续瞬移到身后",
+    Default = false,
+    Callback = function(state)
+        if state then
+            if not selectedName then
+                WindUI:Notify({ Title = "错误", Content = "请先选择目标玩家", Duration = 3 })
+                return
+            end
+            targetPlayer = Players:FindFirstChild(selectedName)
+            if not targetPlayer then
+                WindUI:Notify({ Title = "错误", Content = "目标玩家已离开", Duration = 3 })
+                return
+            end
+            startTeleport()
+        else
+            stopTeleport()
+        end
+    end,
+})
